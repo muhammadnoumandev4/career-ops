@@ -25,6 +25,13 @@ test('strict:true with no restricting tier is inert; block-only strict fails clo
   assert.equal(strictBlockOnly('Berlin, Germany', undefined), true);
 });
 
+test('explicit posting evidence resolves missing location while explicit exclusions still reject', () => {
+  const strict = buildLocationFilter({ allow: ['Italy', 'EU'], strict: true });
+  assert.equal(strict('', undefined, 'Backend Engineer', { candidateEligibility: 'ELIGIBLE' }), true);
+  assert.equal(strict('', undefined, 'Backend Engineer', { candidateEligibility: 'INELIGIBLE' }), false);
+  assert.equal(strict('', undefined), false, 'missing unclassified location still fails closed');
+});
+
 test('block_hard-only strict also fails closed on empty locations (CodeRabbit, #4033)', () => {
   // block_hard is a separate restricting tier from block (scan.mjs:519,524) —
   // always_allow cannot override it, unlike block. A config using only

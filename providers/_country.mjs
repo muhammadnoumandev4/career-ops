@@ -63,6 +63,11 @@ const ALPHA3_TO_ALPHA2 = Object.freeze({
   ZWE: 'ZW',
 });
 
+// ISO alpha-2 codes represented by the provider's alpha-3 map. Consumers that
+// need to recognize a country name in free text use this list with
+// Intl.DisplayNames, rather than maintaining a second 249-country table.
+export const COUNTRY_ALPHA2_CODES = Object.freeze([...new Set(Object.values(ALPHA3_TO_ALPHA2))]);
+
 /**
  * Resolve a two- or three-letter ISO 3166-1 country code to an English name.
  * Returns '' for anything else, including an unassigned code.

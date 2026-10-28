@@ -81,6 +81,7 @@ import { escapeFormulaCell } from './lib/tsv-formula-escape.mjs';
 import { promoteKnownFragmentIdentity, LANGUAGE_PARAMS, languageSubtag } from './url-key.mjs';
 import { getCareerOpsRoot } from './path-resolver.mjs';
 import { checkLivenessViaApi } from './liveness-api.mjs';
+import { classifyLocationEligibility, normalizeCountryCode } from './lib/location-eligibility.mjs';
 
 const CODE_ROOT = path.dirname(fileURLToPath(import.meta.url));
 const DATA_ROOT = getCareerOpsRoot();
@@ -613,14 +614,9 @@ export function buildLocationFilter(locationFilter) {
   const strict = locationFilter.strict === true
     && (allow.length > 0 || block.length > 0 || blockHard.length > 0);
 
-  return (location, url, title) => {
+  return (location, url, title, eligibility = null) => {
     const lower = typeof location === 'string' ? location.trim().toLowerCase() : '';
     const hint = locationHintFromUrl(url);
-    // Nothing to judge on either field → pass (don't penalize missing data),
-    // unless the config opted into strict mode: a location-restricted sweep
-    // against a provider that never returns a location would otherwise let
-    // every out-of-region posting through (#3276).
-    if (lower === '' && hint === '') return !strict;
     const matches = (m) => (lower !== '' && m(lower)) || (hint !== '' && m(hint));
     // `block_hard` is the ONE tier always_allow cannot override. It exists because
     // a European city name can be a whole word inside a non-European location, so
@@ -637,6 +633,16 @@ export function buildLocationFilter(locationFilter) {
     // that are country-level and therefore never a false rejection. Opt-in and
     // additive: a config without `block_hard` behaves exactly as before.
     if (blockHard.length > 0 && blockHard.some(matches)) return false;
+    // A structured eligibility result can rescue a mixed-region description
+    // (for example "US, UK and EU") when one explicitly allowed market is
+    // named in JD text even though the location field only says "Remote".
+    // Hard blocks remain absolute and are checked above.
+    if (eligibility?.candidateEligibility === 'INELIGIBLE') return false;
+    if (eligibility?.candidateEligibility === 'ELIGIBLE') return true;
+    // Nothing to judge on either field → pass (don't penalize missing data),
+    // unless the config opted into strict mode. Explicit eligibility evidence
+    // has already been considered before the missing-location fallback.
+    if (lower === '' && hint === '') return !strict;
     // always_allow still wins over block, and may be satisfied by either field:
     // a genuinely US role whose display string says "United States" is never
     // rejected because of what its URL happens to contain.
@@ -1276,6 +1282,31 @@ export function loadCandidateCountry(profilePath = PROFILE_PATH) {
     return typeof country === 'string' ? country.trim() : '';
   } catch {
     return '';
+  }
+}
+
+export function loadCandidateCity(profilePath = PROFILE_PATH) {
+  if (!existsSync(profilePath)) return '';
+  try {
+    const raw = yaml.load(readFileSync(profilePath, 'utf-8')) || {};
+    const city = raw?.location?.city;
+    return typeof city === 'string' ? city.trim() : '';
+  } catch {
+    return '';
+  }
+}
+
+// Country codes where the profile says the candidate already has work
+// authorization. Keep this separate from the candidate's current country: a
+// remote EU job may still require authorization beyond Italy.
+export function loadCandidateAuthorizedCountries(profilePath = PROFILE_PATH) {
+  if (!existsSync(profilePath)) return [];
+  try {
+    const raw = yaml.load(readFileSync(profilePath, 'utf-8')) || {};
+    const authorized = raw?.location?.authorized_in;
+    return Array.isArray(authorized) ? [...new Set(authorized.map(normalizeCountryCode).filter(Boolean))] : [];
+  } catch {
+    return [];
   }
 }
 
@@ -3126,6 +3157,7 @@ export function formatScanHistoryRow(offer, date, status = 'added') {
     requisition_id: typeof offer.requisitionId === 'string' ? offer.requisitionId : '',
     language: typeof offer.language === 'string' ? offer.language : '',
     listing_key: typeof offer.listingKey === 'string' ? offer.listingKey : '',
+    location_eligibility_json: offer.locationEligibility ? JSON.stringify(offer.locationEligibility) : '',
   };
   return SCAN_HISTORY_COLUMNS.map((name) => sanitizeTsvField(record[name])).join('\t');
 }
@@ -4085,6 +4117,8 @@ async function main() {
   const trustValidator = buildTrustValidator(config.trust_filter);
   const contentFilter = buildContentFilter(config.content_filter);
   const candidateCountry = loadCandidateCountry();
+  const candidateCity = loadCandidateCity();
+  const candidateAuthorizedCountries = loadCandidateAuthorizedCountries();
   const countryEligibilityFilter = buildCountryEligibilityFilter(config.country_eligibility_filter, candidateCountry);
   const visaFilter = buildVisaFilter(config.visa_filter);
   const visaEnabled = Boolean(config.visa_filter) && config.visa_filter.enabled !== false;
@@ -4457,7 +4491,8 @@ async function main() {
         }
         // job.title is passed so a role whose remoteness is stated in the title
         // ("Program Manager - Remote") isn't rejected for a city-only location.
-        if (!locationFilter(job.location, job.url, job.title)) {
+        job.locationEligibility = classifyLocationEligibility(job, { candidateCountry, candidateCity, authorizedCountries: candidateAuthorizedCountries, source: sourceName });
+        if (!locationFilter(job.location, job.url, job.title, job.locationEligibility)) {
           totalFilteredLocation++;
           if (!dryRun) locationFilteredOffers.push({ ...job, source: sourceName });
           continue;

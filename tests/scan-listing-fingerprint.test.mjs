@@ -4,6 +4,7 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { pass, fail } from './helpers.mjs';
 import { computeListingFingerprint } from '../listing-fingerprint.mjs';
+import { parseScanHistoryLine } from '../lib/scan-history-columns.mjs';
 import { isOfferSeen, loadDedupSnapshot, markOfferSeen, formatScanHistoryRow, collectSeenUrls, retainVerifiedListingIdentities, migrateOfferToUrl, refreshListingKey } from '../scan.mjs';
 
 console.log('\nscan.mjs — listing fingerprint participates in scan dedup');
@@ -33,8 +34,9 @@ try {
 
   if (rows.length === 1) pass('two URLs for one ATS posting produce one accepted row in a scan');
   else fail(`two URL aliases produced ${rows.length} rows (expected 1)`);
-  if (rows[0]?.split('\t').at(-1) === expectedKey) pass('the accepted scan-history row persists the strong listing_key');
-  else fail(`scan-history listing_key was ${JSON.stringify(rows[0]?.split('\t').at(-1))}`);
+  const storedListingKey = rows[0] ? parseScanHistoryLine(rows[0]).listing_key : '';
+  if (storedListingKey === expectedKey) pass('the accepted scan-history row persists the strong listing_key');
+  else fail(`scan-history listing_key was ${JSON.stringify(storedListingKey)}`);
 
   const root = mkdtempSync(join(tmpdir(), 'co-listing-fingerprint-'));
   try {
