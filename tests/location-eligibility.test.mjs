@@ -307,3 +307,21 @@ test('the lowercase pronoun “us” is not parsed as the United States country 
   assert.deepEqual(result.geographicScope.eligibleCountries, []);
   assert.deepEqual(result.geographicScope.eligibleRegions, ['EUROPE']);
 });
+
+test('an exclusion cue in one HTML bullet does not reach a place named in the next (Smartist React Engineer, missed 29 Oct)', () => {
+  const result = classifyLocationEligibility({
+    title: 'React Engineer',
+    location: '',
+    remote: true,
+    description: '<ul><li>Design system instincts and fluency in Figma</li><li>You make things outside of work too</li></ul><h3>Why Smartist</h3><ul><li><strong>Work from anywhere.</strong> Fully remote, flexible hours.</li></ul>',
+  }, { candidateCountry: 'IT', candidateCity: 'Milan' });
+  assert.notEqual(result.candidateEligibility, 'INELIGIBLE');
+  assert.deepEqual(result.geographicScope.excludedRegions, []);
+});
+
+test('an exclusion stays inside its own clause', () => {
+  const kept = classifyLocationEligibility({ location: 'Remote', remote: true, description: 'Remote within Europe, except the UK and Switzerland.' });
+  assert.deepEqual(kept.geographicScope.excludedCountries, ['CH', 'GB']);
+  const italy = classifyLocationEligibility({ location: 'Remote', remote: true, description: 'Remote worldwide, excluding Italy.' }, { candidateCountry: 'IT' });
+  assert.equal(italy.candidateEligibility, 'INELIGIBLE');
+});
