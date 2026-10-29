@@ -325,3 +325,19 @@ test('an exclusion stays inside its own clause', () => {
   const italy = classifyLocationEligibility({ location: 'Remote', remote: true, description: 'Remote worldwide, excluding Italy.' }, { candidateCountry: 'IT' });
   assert.equal(italy.candidateEligibility, 'INELIGIBLE');
 });
+
+test('remote limited to named countries without Italy is ineligible (Codurance Brazil/Portugal, Procedure Tech Mumbai)', () => {
+  const codurance = classifyLocationEligibility({ title: 'Senior GenAI Full-Stack Engineer - Brazil', location: 'Portugal (Remote)', remote: true, countries: ['br', 'pt'], regions: ['eu', 'latam'], description: '' }, { candidateCountry: 'IT' });
+  assert.equal(codurance.candidateEligibility, 'INELIGIBLE');
+  const mumbai = classifyLocationEligibility({ title: 'Senior AI Full Stack Engineer (React + Node)', location: 'Mumbai (Remote)', remote: true, countries: ['in'], regions: ['apac'], description: '' }, { candidateCountry: 'IT' });
+  assert.equal(mumbai.candidateEligibility, 'INELIGIBLE');
+});
+
+test('a named country plus a covering region stays eligible, and a plain remote stays unknown', () => {
+  const berlin = classifyLocationEligibility({ title: 'Senior Backend Engineer', location: 'Berlin, Germany (Remote)', remote: true, description: 'Fully remote across Europe.' }, { candidateCountry: 'IT' });
+  assert.equal(berlin.candidateEligibility, 'ELIGIBLE');
+  const plain = classifyLocationEligibility({ title: 'Senior Backend Engineer', location: 'Remote', remote: true, description: '' }, { candidateCountry: 'IT' });
+  assert.equal(plain.candidateEligibility, 'UNKNOWN');
+  const italy = classifyLocationEligibility({ title: 'Backend Engineer', location: 'Italy, Spain (Remote)', remote: true, description: '' }, { candidateCountry: 'IT' });
+  assert.equal(italy.candidateEligibility, 'ELIGIBLE');
+});
