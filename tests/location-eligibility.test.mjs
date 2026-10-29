@@ -341,3 +341,10 @@ test('a named country plus a covering region stays eligible, and a plain remote 
   const italy = classifyLocationEligibility({ title: 'Backend Engineer', location: 'Italy, Spain (Remote)', remote: true, description: '' }, { candidateCountry: 'IT' });
   assert.equal(italy.candidateEligibility, 'ELIGIBLE');
 });
+
+test('one rule for every country: remote with no restriction or a restriction that covers Italy (EU, EEA, EMEA, Europe, Schengen)', () => {
+  const c = (location, description = '') => classifyLocationEligibility({ title: 'Senior Backend Engineer', location, remote: true, description }, { candidateCountry: 'IT' }).candidateEligibility;
+  for (const l of ['Remote - LATAM', 'Remote (APAC)', 'Remote, MENA', 'Remote, North America', 'Remote, UK', 'Dubai, UAE (Remote)', 'Remote, Germany']) assert.equal(c(l), 'INELIGIBLE', l);
+  for (const l of ['Remote - Schengen area', 'Remote - EMEA', 'Remote - UK & Europe', 'Worldwide', 'Remote, Italy']) assert.equal(c(l), 'ELIGIBLE', l);
+  assert.equal(c('Remote'), 'UNKNOWN');
+});
