@@ -413,3 +413,33 @@ test('citizenship is read next to the citizenship word only (30 Oct dry run)', (
 test('a region label next to countries from other continents is an extra place (Lemon.io)', () => {
   assert.equal(decide({ location: 'Europe, USA, UK, Canada, Australia, Ireland, Switzerland, Singapore, Mexico, Iceland, Norway', remote: true }), 'ELIGIBLE');
 });
+
+test('a description restriction counts only next to its place, and a contradicted one does not exclude (30 Oct dry run)', () => {
+  // YozmaTech / GoCharting: one long description line, a US mention far from any cue.
+  assert.equal(decide({ location: 'Europe (Remote)', description: 'Key Requirements: 10+ years building backend systems for US and European clients. Experience with ledgers. Only senior engineers will be considered.' }), 'ELIGIBLE');
+  // Bloomreach on Jobicy: the page also lists another job "Remote from UK".
+  assert.equal(decide({ location: 'Europe', description: 'Apply for this job. Remote from Europe. Salary CZK 1,520k. More than 50 Remote from UK Work type Full Time GitLab Oct 30' }), 'ELIGIBLE');
+  // Edge case 2 stays: Europe label, body narrows to countries without Italy.
+  assert.equal(decide({ location: 'Remote - Europe', description: 'You must reside in Poland, Germany or Portugal.' }), 'INELIGIBLE');
+});
+
+test('a restrictive word far from any place is not a restriction (Come Back Agency)', () => {
+  assert.equal(decide({ location: 'Europe (Remote)', description: 'Communicate with US-based clients Full-time 16:00-00:00 Kyiv time Important: NestJS experience limited to tutorials, courses, or pet projects is not sufficient Direct cooperation with a US-based software company' }), 'ELIGIBLE');
+  assert.equal(decide({ location: 'Remote', description: 'Candidates in Poland only' }), 'INELIGIBLE');
+});
+
+test('a region seen only in description prose does not beat a foreign location field (Affirm, Sardine, Grafana)', () => {
+  assert.equal(decide({ location: 'Remote Canada', remote: true, description: 'Most roles can be done from almost anywhere within the country of employment.' }), 'INELIGIBLE');
+  assert.equal(decide({ location: 'Canada', remote: true, description: '- Work from anywhere: Remote-first Culture' }), 'INELIGIBLE');
+  assert.equal(decide({ location: 'Sweden', title: 'Engineering Manager / Sweden / Remote', description: 'Job locations USA Canada Europe All locations' }), 'INELIGIBLE');
+  // A hiring sentence next to the region still wins, and a plain remote role stays worldwide.
+  assert.equal(decide({ location: 'UK (Remote)', description: 'We are open to candidates in Europe.' }), 'ELIGIBLE');
+  assert.equal(decide({ location: 'Remote', description: 'Work from anywhere in the world.' }), 'ELIGIBLE');
+});
+
+test('a description sentence tying Europe/EU to the hire still beats a foreign location field (30 Oct dry run)', () => {
+  assert.equal(decide({ location: 'Ireland (Remote)', remote: true, description: 'Fully remote: Work from anywhere in Europe.' }), 'ELIGIBLE');
+  assert.equal(decide({ location: 'United Kingdom (Remote)', remote: true, description: 'Based in the UK or EU. You are...' }), 'ELIGIBLE');
+  assert.equal(decide({ location: 'Brazil (Remote)', remote: true, description: 'Candidates may be based in Latin America, Europe, Canada, the United States, South Korea or Singapore.' }), 'ELIGIBLE');
+  assert.equal(decide({ location: 'Paris, France', remote: false, description: 'We proudly support 2,400 customers in 64 countries across Europe.' }), 'INELIGIBLE');
+});
