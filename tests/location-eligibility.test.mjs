@@ -402,3 +402,14 @@ test('hiring-mechanism sentences name hiring countries', () => {
   assert.equal(decide({ location: 'Remote', description: 'Contractors based in Italy are welcome (B2B, Partita IVA); we cannot employ in Italy.' }), 'ELIGIBLE');
   assert.equal(decide({ location: 'Remote - India', description: 'We also engage international contractors.' }), 'UNKNOWN');
 });
+
+test('citizenship is read next to the citizenship word only (30 Oct dry run)', () => {
+  // MSC: "the first division located in the national territory"; the requirement word is elsewhere in the text.
+  assert.equal(decide({ location: 'Torino, Italy', description: 'MSC Technology Italy is the first division located in the national territory. A degree is required.' }), 'ELIGIBLE');
+  assert.equal(decide({ location: 'Remote - US', description: 'Must be a US citizen with an active clearance; we work with international teams.' }), 'INELIGIBLE');
+  assert.equal(decide({ location: 'United Kingdom (Remote)', description: 'Remote-first. Strong communication is required. We serve international clients in 30 countries.' }), 'INELIGIBLE');
+});
+
+test('a region label next to countries from other continents is an extra place (Lemon.io)', () => {
+  assert.equal(decide({ location: 'Europe, USA, UK, Canada, Australia, Ireland, Switzerland, Singapore, Mexico, Iceland, Norway', remote: true }), 'ELIGIBLE');
+});
