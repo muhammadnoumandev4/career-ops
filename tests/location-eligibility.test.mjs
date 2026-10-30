@@ -156,7 +156,8 @@ test('must-be-authorized language is separate from citizenship and sponsorship',
     location: 'Remote — Worldwide',
     description: 'Applicants must be authorized to work in the EU. US citizens only for the export-controlled project.',
   });
-  assert.equal(result.candidateEligibility, 'ELIGIBLE');
+  // A citizenship requirement the candidate does not meet now decides (30 Oct 2026): "US citizens only" excludes him.
+  assert.equal(result.candidateEligibility, 'INELIGIBLE');
   assert.equal(result.hiringEligibility.workAuthorization, 'REQUIRED');
   assert.deepEqual(result.hiringEligibility.workAuthorizationRegions, ['EU']);
   assert.equal(result.hiringEligibility.citizenshipRequirement.status, 'REQUIRED');
@@ -347,4 +348,57 @@ test('one rule for every country: remote with no restriction or a restriction th
   for (const l of ['Remote - LATAM', 'Remote (APAC)', 'Remote, MENA', 'Remote, North America', 'Remote, UK', 'Dubai, UAE (Remote)', 'Remote, Germany']) assert.equal(c(l), 'INELIGIBLE', l);
   for (const l of ['Remote - Schengen area', 'Remote - EMEA', 'Remote - UK & Europe', 'Worldwide', 'Remote, Italy']) assert.equal(c(l), 'ELIGIBLE', l);
   assert.equal(c('Remote'), 'UNKNOWN');
+});
+
+// Research of 30 Oct 2026 (docs/location-eligibility in the app repo): real wordings from employer ATS pages.
+const decide = (job, options = {}) => classifyLocationEligibility({ title: 'Senior Backend Engineer', remote: true, ...job }, { candidateCountry: 'IT', candidateCity: 'Milan', ...options }).candidateEligibility;
+const n8nCountries = 'Austria; Belgium; Bulgaria; Croatia; Cyprus; Czechia; Denmark; Estonia; Finland; France; Germany; Greece; Hungary; Ireland; Latvia; Lithuania; Luxembourg; Netherlands; Poland; Portugal; Romania; Slovakia; Slovenia; Spain; Sweden; United Kingdom; Switzerland';
+
+test('the narrowest list wins: a region label with an enumeration of its countries that leaves Italy out', () => {
+  assert.equal(decide({ location: `Berlin Office; Remote | Europe; ${n8nCountries}` }), 'INELIGIBLE'); // n8n
+  assert.equal(decide({ location: 'USA, Chile, UK, Uruguay, Switzerland, Brazil, Canada, Mexico, Argentina, Europe, Remote' }), 'ELIGIBLE'); // Nango
+  assert.equal(decide({ location: 'Remote; Europe; Ireland; Poland; United Kingdom; United States' }), 'ELIGIBLE'); // ElevenLabs
+  assert.equal(decide({ location: `Remote | Europe; ${n8nCountries}; Italy` }), 'ELIGIBLE');
+});
+
+test('an office city on a remote role is not a restriction; a country on a remote role is', () => {
+  assert.equal(decide({ location: 'Paris, France', title: 'Open-Source ML Engineer' }), 'UNKNOWN'); // Workable shows HQ
+  assert.equal(decide({ location: 'Paris, France', countries: ['fr'], title: 'Open-Source ML Engineer' }), 'UNKNOWN');
+  assert.equal(decide({ location: 'Paris, France', title: 'ML Engineer - EMEA Remote' }), 'ELIGIBLE'); // Hugging Face
+  assert.equal(decide({ location: 'Remote - Germany' }), 'INELIGIBLE');
+  assert.equal(decide({ location: 'Netherlands, Remote' }), 'INELIGIBLE'); // NVIDIA
+  assert.equal(decide({ location: 'Mumbai (Remote)', countries: ['in'] }), 'INELIGIBLE');
+  assert.equal(decide({ location: 'Remote, United States' }), 'INELIGIBLE'); // GitLab
+});
+
+test('regions by membership: sub-regions are not "Europe"', () => {
+  for (const l of ['Remote - DACH', 'Remote - Benelux', 'Remote - Nordics', 'Remote - CEE', 'Remote - Eastern Europe', 'Remote - Northern Europe', 'Remote - Central Europe', 'Remote - EFTA', 'Remote - Middle East', 'Remote - Africa'])
+    assert.equal(decide({ location: l }), 'INELIGIBLE', l);
+  for (const l of ['Remote - EU27', 'Remote - Southern Europe', 'Remote - EU/UK', 'Remote (EMEA)'])
+    assert.equal(decide({ location: l }), 'ELIGIBLE', l);
+  assert.equal(decide({ location: 'Remote - Western Europe' }), 'UNKNOWN');
+});
+
+test('a time-zone window is not a place', () => {
+  assert.equal(decide({ location: 'Remote (Europe ±3 hours)' }), 'UNKNOWN');
+  assert.equal(decide({ location: 'Remote', description: 'You must work within CET +/- 2 hours.' }), 'UNKNOWN');
+  assert.equal(decide({ location: 'Remote - Europe (CET ±3)' }), 'ELIGIBLE');
+});
+
+test('citizenship the candidate does not hold excludes; "or the right to work" does not', () => {
+  assert.equal(decide({ location: 'Remote - EU/EEA', description: 'EU citizenship is required for this role.' }), 'INELIGIBLE');
+  assert.equal(decide({ location: 'Remote - EU/EEA', description: 'EU citizenship is required for this role.' }, { citizenships: ['FR'] }), 'ELIGIBLE');
+  assert.equal(decide({ location: 'Remote - EU', description: 'You must be an EU citizen or hold the right to work in the EU.' }), 'ELIGIBLE');
+});
+
+test('regular attendance at a foreign office excludes a remote-labelled role', () => {
+  assert.equal(decide({ location: 'Remote', description: 'We are remote-first. You must attend our Berlin office 3 days per week.' }), 'INELIGIBLE');
+  assert.equal(decide({ location: 'Remote - EU', description: 'Quarterly team offsites in Lisbon.' }), 'ELIGIBLE');
+  assert.equal(decide({ location: 'Remote', description: 'Two days a week in our Milan office.' }), 'ELIGIBLE');
+});
+
+test('hiring-mechanism sentences name hiring countries', () => {
+  assert.equal(decide({ location: 'Remote', description: 'We hire through an Employer of Record in Italy, Spain and Portugal.' }), 'ELIGIBLE');
+  assert.equal(decide({ location: 'Remote', description: 'Contractors based in Italy are welcome (B2B, Partita IVA); we cannot employ in Italy.' }), 'ELIGIBLE');
+  assert.equal(decide({ location: 'Remote - India', description: 'We also engage international contractors.' }), 'UNKNOWN');
 });
